@@ -1,0 +1,17 @@
+[project]
+name = "tts-mcp"
+version = "0.1.0"
+description = "MCP server for Text-to-Speech service integration"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "requests>=2.32.5",
+]
+
+[project.scripts]
+tts-mcp = "tts_mcp:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
