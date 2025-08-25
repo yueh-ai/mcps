@@ -4,32 +4,28 @@
 import asyncio
 import logging
 from typing import Any
-from contextlib import asynccontextmanager
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.server.models import InitializationOptions
+from mcp.types import Tool, TextContent, ServerCapabilities, ToolsCapability
 
-from .tts_engine import get_engine, tts_engine_lifespan
+from .tts_engine import get_engine
 from .voices import DEFAULT_VOICE, AVAILABLE_VOICES
 
-logging.basicConfig(level=logging.INFO)
+import os
+import sys
+
+# Only enable logging if DEBUG environment variable is set
+if os.environ.get('DEBUG'):
+    logging.basicConfig(level=logging.INFO)
+else:
+    # Disable all logging to stderr to avoid interfering with MCP protocol
+    logging.basicConfig(level=logging.CRITICAL)
+    
 logger = logging.getLogger(__name__)
 
 app = Server("tts-mcp")
-
-
-@asynccontextmanager
-async def lifespan():
-    """
-    Manage TTS engine lifecycle.
-    """
-    logger.info("Starting TTS MCP server...")
-    async with tts_engine_lifespan():
-        logger.info("TTS engine initialized")
-        yield
-        logger.info("Shutting down TTS engine...")
-    logger.info("TTS MCP server stopped")
 
 
 def count_words(text: str) -> int:
@@ -109,6 +105,12 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         
         try:
             engine = get_engine()
+            if not engine._initialized:
+                return [TextContent(
+                    type="text",
+                    text="Error: TTS engine is not available. Please check that espeak is installed and accessible."
+                )]
+            
             result = await engine.speak(
                 text=text,
                 voice=voice,
@@ -151,9 +153,25 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
 
 async def main():
     """Main entry point."""
-    async with lifespan():
-        async with stdio_server() as (read_stream, write_stream):
-            await app.run(read_stream, write_stream)
+    # Initialize TTS engine at startup
+    engine = get_engine()
+    try:
+        await engine.initialize()
+    except Exception as e:
+        logger.warning(f"TTS engine initialization failed: {e}")
+    
+    # Create initialization options
+    init_options = InitializationOptions(
+        server_name="tts-mcp",
+        server_version="0.1.0",
+        capabilities=ServerCapabilities(
+            tools=ToolsCapability(listChanged=False)
+        )
+    )
+    
+    # Run the MCP server
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(read_stream, write_stream, init_options)
 
 
 if __name__ == "__main__":

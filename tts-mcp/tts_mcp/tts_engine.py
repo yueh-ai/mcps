@@ -49,10 +49,12 @@ class TTSEngine:
                 
             except ImportError as e:
                 logger.error(f"Failed to import KittenTTS: {e}")
-                raise RuntimeError("KittenTTS is not installed. Please install it with: pip install kittentts")
+                logger.warning("TTS functionality will be disabled")
+                self._initialized = False
             except Exception as e:
                 logger.error(f"Failed to initialize TTS model: {e}")
-                raise RuntimeError(f"Failed to initialize TTS model: {str(e)}")
+                logger.warning("TTS functionality will be disabled")
+                self._initialized = False
     
     async def cleanup(self) -> None:
         """
@@ -200,6 +202,10 @@ async def tts_engine_lifespan():
     engine = get_engine()
     try:
         await engine.initialize()
+    except Exception as e:
+        logger.error(f"Error during TTS engine initialization: {e}")
+    
+    try:
         yield engine
     finally:
         await engine.cleanup()
