@@ -9,6 +9,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.server.models import InitializationOptions
 from mcp.types import Tool, TextContent, ServerCapabilities, ToolsCapability
+from contextlib import asynccontextmanager
 
 from .tts_engine import get_engine
 from .voices import DEFAULT_VOICE, AVAILABLE_VOICES
@@ -16,14 +17,24 @@ from .voices import DEFAULT_VOICE, AVAILABLE_VOICES
 import os
 import sys
 
-# Only enable logging if DEBUG environment variable is set
-if os.environ.get('DEBUG'):
-    logging.basicConfig(level=logging.INFO)
-else:
-    # Disable all logging to stderr to avoid interfering with MCP protocol
-    logging.basicConfig(level=logging.CRITICAL)
     
 logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan():
+    """Manage TTS engine lifecycle."""
+    engine = get_engine()
+    try:
+        await engine.initialize()
+        logger.info("TTS engine initialized")
+    except Exception as e:
+        logger.warning(f"TTS engine initialization failed: {e}")
+    
+    try:
+        yield
+    finally:
+        await engine.cleanup()
+        logger.info("TTS engine cleaned up")
 
 app = Server("tts-mcp")
 
@@ -53,11 +64,6 @@ async def list_tools() -> list[Tool]:
                         "default": DEFAULT_VOICE,
                         "enum": [v["id"] for v in AVAILABLE_VOICES]
                     },
-                    "robotic": {
-                        "type": "boolean",
-                        "description": "Apply robotic voice effect",
-                        "default": False
-                    },
                     "speed": {
                         "type": "number",
                         "description": "Playback speed factor (1.0 = normal, 1.3 = 30% faster)",
@@ -67,14 +73,6 @@ async def list_tools() -> list[Tool]:
                     }
                 },
                 "required": ["text"]
-            }
-        ),
-        Tool(
-            name="list_voices",
-            description="List all available TTS voices",
-            inputSchema={
-                "type": "object",
-                "properties": {}
             }
         )
     ]
@@ -108,7 +106,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             if not engine._initialized:
                 return [TextContent(
                     type="text",
-                    text="Error: TTS engine is not available. Please check that espeak is installed and accessible."
+                    text="Error: TTS engine is not available. Please check dependencies are installed."
                 )]
             
             result = await engine.speak(
@@ -133,17 +131,6 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 text=f"TTS Error: {str(e)}"
             )]
     
-    elif name == "list_voices":
-        voices_text = "Available TTS Voices:\n\n"
-        for voice in AVAILABLE_VOICES:
-            voices_text += f"• {voice['id']}: {voice['description']} ({voice['gender']})\n"
-        voices_text += f"\nDefault voice: {DEFAULT_VOICE}"
-        
-        return [TextContent(
-            type="text",
-            text=voices_text
-        )]
-    
     else:
         return [TextContent(
             type="text",
@@ -153,13 +140,6 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
 
 async def main():
     """Main entry point."""
-    # Initialize TTS engine at startup
-    engine = get_engine()
-    try:
-        await engine.initialize()
-    except Exception as e:
-        logger.warning(f"TTS engine initialization failed: {e}")
-    
     # Create initialization options
     init_options = InitializationOptions(
         server_name="tts-mcp",
@@ -169,9 +149,10 @@ async def main():
         )
     )
     
-    # Run the MCP server
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, init_options)
+    # Run the MCP server with lifespan management
+    async with lifespan():
+        async with stdio_server() as (read_stream, write_stream):
+            await app.run(read_stream, write_stream, init_options)
 
 
 if __name__ == "__main__":

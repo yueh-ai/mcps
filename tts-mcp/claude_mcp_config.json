@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "tts-mcp": {
-      "command": "tts-mcp",
-      "args": [],
-      "env": {}
-    }
-  }
-}

@@ -4,7 +4,6 @@ import asyncio
 import logging
 from typing import Optional, Any
 import numpy as np
-from contextlib import asynccontextmanager
 
 from .voices import DEFAULT_VOICE, is_valid_voice
 from .audio_processor import process_audio
@@ -187,25 +186,3 @@ def get_engine() -> TTSEngine:
     if _engine_instance is None:
         _engine_instance = TTSEngine()
     return _engine_instance
-
-
-@asynccontextmanager
-async def tts_engine_lifespan():
-    """
-    Context manager for TTS engine lifecycle.
-    
-    Usage:
-        async with tts_engine_lifespan():
-            engine = get_engine()
-            await engine.speak("Hello world")
-    """
-    engine = get_engine()
-    try:
-        await engine.initialize()
-    except Exception as e:
-        logger.error(f"Error during TTS engine initialization: {e}")
-    
-    try:
-        yield engine
-    finally:
-        await engine.cleanup()
