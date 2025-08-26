@@ -50,49 +50,12 @@ def speed_up_audio(audio: np.ndarray, speed_factor: float = 1.3) -> np.ndarray:
     return audio[indices]
 
 
-def make_robotic(audio: np.ndarray, sample_rate: int = 24000) -> np.ndarray:
-    """
-    Apply robotic voice effect with subtle pitch shift and ring modulation.
-    
-    Args:
-        audio: Input audio array
-        sample_rate: Sample rate in Hz
-        
-    Returns:
-        Audio with robotic effect
-    """
-    audio = audio.astype(np.float32)
-    
-    pitch_factor = 0.92
-    indices = np.arange(0, len(audio), pitch_factor)
-    indices = indices[indices < len(audio)].astype(int)
-    pitched = audio[indices]
-    
-    pitched = np.tanh(pitched * 1.2) * 0.8
-    
-    t = np.arange(len(pitched)) / sample_rate
-    carrier = np.sin(2 * np.pi * 600 * t)
-    modulated = pitched * (0.85 + 0.1 * carrier)
-    
-    original_resized = np.interp(
-        np.linspace(0, len(audio) - 1, len(modulated)), 
-        np.arange(len(audio)), 
-        audio
-    )
-    final = 0.5 * original_resized + 0.5 * modulated
-    
-    max_val = np.max(np.abs(final))
-    if max_val > 0:
-        final = final / max_val * 0.95
-    
-    return final
 
 
 def process_audio(
     audio: np.ndarray,
     sample_rate: int = 24000,
     apply_smoothing: bool = True,
-    apply_robotic: bool = False,
     speed_factor: float = 1.3
 ) -> np.ndarray:
     """
@@ -117,8 +80,6 @@ def process_audio(
     if apply_smoothing:
         audio = smooth_audio(audio, sample_rate)
     
-    if apply_robotic:
-        audio = make_robotic(audio, sample_rate)
     
     if speed_factor != 1.0:
         audio = speed_up_audio(audio, speed_factor)

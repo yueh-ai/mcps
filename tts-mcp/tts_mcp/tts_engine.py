@@ -14,18 +14,13 @@ logger = logging.getLogger(__name__)
 
 class TTSEngine:
     """
-    Singleton TTS engine that manages the KittenTTS model lifecycle.
+    TTS engine that manages the KittenTTS model lifecycle.
     """
     
-    _instance: Optional['TTSEngine'] = None
-    _model: Optional[Any] = None
-    _lock: asyncio.Lock = asyncio.Lock()
-    _initialized: bool = False
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+    def __init__(self):
+        self._model: Optional[Any] = None
+        self._lock: asyncio.Lock = asyncio.Lock()
+        self._initialized: bool = False
     
     async def initialize(self) -> None:
         """
@@ -41,7 +36,7 @@ class TTSEngine:
                 from kittentts import KittenTTS
                 
                 self._model = await asyncio.get_event_loop().run_in_executor(
-                    None, KittenTTS, "KittenML/kitten-tts-nano-0.1"
+                    None, KittenTTS, "KittenML/kitten-tts-nano-0.2"
                 )
                 self._initialized = True
                 logger.info("KittenTTS model initialized successfully")
@@ -73,7 +68,6 @@ class TTSEngine:
         text: str,
         voice: str = DEFAULT_VOICE,
         apply_smoothing: bool = True,
-        apply_robotic: bool = False,
         speed_factor: float = 1.3
     ) -> np.ndarray:
         """
@@ -116,7 +110,6 @@ class TTSEngine:
                 audio,
                 sample_rate=24000,
                 apply_smoothing=apply_smoothing,
-                apply_robotic=apply_robotic,
                 speed_factor=speed_factor
             )
             
@@ -128,7 +121,6 @@ class TTSEngine:
         voice: str = DEFAULT_VOICE,
         play: bool = True,
         apply_smoothing: bool = True,
-        apply_robotic: bool = False,
         speed_factor: float = 1.3
     ) -> dict:
         """
@@ -150,7 +142,6 @@ class TTSEngine:
                 text=text,
                 voice=voice,
                 apply_smoothing=apply_smoothing,
-                apply_robotic=apply_robotic,
                 speed_factor=speed_factor
             )
             
@@ -170,19 +161,3 @@ class TTSEngine:
                 "success": False,
                 "message": f"Speech generation failed: {str(e)}"
             }
-
-
-_engine_instance: Optional[TTSEngine] = None
-
-
-def get_engine() -> TTSEngine:
-    """
-    Get the singleton TTS engine instance.
-    
-    Returns:
-        The TTS engine instance
-    """
-    global _engine_instance
-    if _engine_instance is None:
-        _engine_instance = TTSEngine()
-    return _engine_instance

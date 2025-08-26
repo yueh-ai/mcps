@@ -5,13 +5,13 @@ import asyncio
 import logging
 from typing import Any
 
-from mcp.server import Server
+from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.stdio import stdio_server
 from mcp.server.models import InitializationOptions
-from mcp.types import Tool, TextContent, ServerCapabilities, ToolsCapability
+from mcp.types import Tool, TextContent
 from contextlib import asynccontextmanager
 
-from .tts_engine import get_engine
+from .tts_engine import TTSEngine
 from .voices import DEFAULT_VOICE, AVAILABLE_VOICES
 
 import os
@@ -21,9 +21,9 @@ import sys
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
-async def lifespan():
+async def lifespan(_server: Server):
     """Manage TTS engine lifecycle."""
-    engine = get_engine()
+    engine = TTSEngine()
     try:
         await engine.initialize()
         logger.info("TTS engine initialized")
@@ -31,12 +31,12 @@ async def lifespan():
         logger.warning(f"TTS engine initialization failed: {e}")
     
     try:
-        yield
+        yield {"engine": engine}
     finally:
         await engine.cleanup()
         logger.info("TTS engine cleaned up")
 
-app = Server("tts-mcp")
+app = Server("tts-mcp", lifespan=lifespan)
 
 
 def count_words(text: str) -> int:
@@ -102,7 +102,10 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             )]
         
         try:
-            engine = get_engine()
+            # Access engine from lifespan context
+            ctx = app.request_context
+            engine = ctx.lifespan_context["engine"]
+            
             if not engine._initialized:
                 return [TextContent(
                     type="text",
@@ -114,7 +117,6 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 voice=voice,
                 play=True,
                 apply_smoothing=True,
-                apply_robotic=robotic,
                 speed_factor=speed
             )
             
@@ -140,19 +142,19 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
 
 async def main():
     """Main entry point."""
-    # Create initialization options
-    init_options = InitializationOptions(
-        server_name="tts-mcp",
-        server_version="0.1.0",
-        capabilities=ServerCapabilities(
-            tools=ToolsCapability(listChanged=False)
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(
+            read_stream,
+            write_stream,
+            InitializationOptions(
+                server_name="tts-mcp",
+                server_version="0.1.0",
+                capabilities=app.get_capabilities(
+                    notification_options=NotificationOptions(),
+                    experimental_capabilities={},
+                ),
+            ),
         )
-    )
-    
-    # Run the MCP server with lifespan management
-    async with lifespan():
-        async with stdio_server() as (read_stream, write_stream):
-            await app.run(read_stream, write_stream, init_options)
 
 
 if __name__ == "__main__":
